@@ -1,1 +1,128 @@
+0.买的 amz 的服务器，一般不给设置密码，要
+   sudo passwd 
+1. 安装 Docker（如果没装）
+  sudo apt update
+  sudo apt install -y docker.io
+  sudo systemctl enable docker
+  sudo systemctl start docker
+2.开启 443端口 在 amz 联网标签 我买的是 amz的 lightsail 服务器，
+  IPV4防火墙，添加规则-HTTPS TCP 443 任何IPv4地址 
+3.域名解析 在cloudflare 
+  DNS-记录-添加记录，
+      类型A，
+      名称 amz (可以随便写，我这里买的是 amz的服务器，所以写的是 amz，这个加上你的域名，就是你完整的地址),比如你的域名是   AABBCCDD.com,后面申请SSL证书 GOST 填写的域名就是 amz.AABBCCDD.com
+      内容 vps服务器公网IPV4地址，
+      代理状态 仅DNS 
+      TTL 自动
+4.获取 SSL 证书（certbot）
+  sudo apt install snapd -y
+  sudo snap install core
+  sudo snap refresh core
+  sudo snap install --classic certbot
+  
+  sudo certbot certonly --standalone -d 你的域名(这里就是第3步的名称+你的域名，比如我的就是 amz.AABBCCDD.com )
+  
+  证书生成后在：/etc/letsencrypt/live/你的域名/ 
+  包括 fullchain.pem  privkey.pem
+
+  5.启动 Gost（HTTPS / HTTP2）
+  sudo docker run -d --name gost \
+    --restart always \
+    --net=host \
+    -v /etc/letsencrypt:/etc/letsencrypt:ro \
+    ginuerzh/gost \
+    -L "http2://用户名:密码@:443?cert=/etc/letsencrypt/live/你的域名/fullchain.pem&key=/etc/letsencrypt/live/你的域名/privkey.pem&probe_resist=code:400&knock=www.google.com"
+    用户名:密码 是你买的 服务器的 用户名和密码 
+    你的域名  就是第3步的名称+加上你的域名   比如我的就是 amz.AABBCCDD.com
+  6. 开启 TCP BBR 拥塞控制算法
+        先确认内核版本 uname -r  只要 ≥ 4.9 就支持
+        启用 BBR 
+                echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf
+                echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf
+                sudo sysctl -p
+       验证是否开启成功 
+                查看可用算法：sysctl net.ipv4.tcp_available_congestion_control  应该包含：bbr
+                查看当前算法：sysctl net.ipv4.tcp_congestion_control            输出应该是 bbr
+                确认模块已加载：lsmod | grep bbr                                有输出说明已生效
+        进阶（可选优化）
+                sudo vim /etc/sysctl.conf
+                加入
+                        net.core.rmem_max = 67108864
+                        net.core.wmem_max = 67108864
+                        net.ipv4.tcp_rmem = 4096 87380 67108864
+                        net.ipv4.tcp_wmem = 4096 65536 67108864
+                然后  
+                        sudo sysctl -p
+  6.检查
+    如无意外，你的服务就启起来了。 你可以使用如下命令在检查有没有启动成功：
+    sudo docker ps 来查看 gost 是否在运行。
+    netstat -nolp | grep 443 来查看 gost 是否在监听 443 端口。
+    sudo docker logs gost 来查看 gost 的日志。
+    你可以使用下面的命令验证你的 gost 服务是否正常。
+    curl -v "https://www.google.com" --proxy "https://DOMAIN" --proxy-user 'USER:PASS'  如果卡在这里，一直没有输出，去第2步开启443端口
+     DOMAIN 换成你的域名就是第3步的名称+加上你的域名 比如我的就是 amz.AABBCCDD.com
+     USER:PASS   是你买的服务器的 用户名和密码 ，中间的 :要留着
+    浏览器访问：https://你的域名  （就是第3步的名称+加上你的域名 比如我的就是 amz.AABBCCDD.com），如果返回
+      该网页无法正常运作
+      如果问题仍然存在，请与网站所有者联系。
+      HTTP ERROR 400    
+    说明服务在运行
+   7.Clash配置
+        port: 7890
+        socks-port: 7891
+        redir-port: 7892
+        mixed-port: 7893
+        ipv6: false
+        allow-lan: true
+        mode: Global
+        log-level: debug
+        external-controller: 127.0.0.1:30183
+        secret: 9c05ab89-5cb6-416c-a3db-79c2fc7bbe0c
+        #tun:
+        #  enable: true
+        #  stack: system
+        #  dns-hijack:
+        #    - tcp://8.8.8.8:53
+        #    - udp://8.8.8.8:53
+        dns:
+          enable: true
+          ipv6: false
+          listen: 0.0.0.0:53
+          default-nameserver:
+            - 114.114.114.114
+          enhanced-mode: fake-ip
+          fake-ip-range: 198.18.0.1/16
+          nameserver:
+            - 114.114.114.114
+            - 223.5.5.5
+            - tls://8.8.8.8:853
+          fallback:
+            - tls://8.8.8.8:853
+        proxies:
+          - name: amz 这个随便，但是是要和   proxy-groups:proxies: amz 保持一致
+            type: http
+            server: amz.AABBCCDD.com （这是第3步，你用的域名）
+            port: 443
+            username: 你买的VPS 的 用户名
+            password: 你买的VPS 的 密码
+            tls: true
+            skip-cert-verify: true
+        proxy-groups:
+          - name: auto
+            type: select
+            proxies:
+              - amz
+            url: https://www.google.com
+            interval: 300
+            _index: 0
+        rules:
+          - DOMAIN-SUFFIX,local,DIRECT
+          - IP-CIDR,127.0.0.0/8,DIRECT
+          - IP-CIDR,172.16.0.0/12,DIRECT
+          - IP-CIDR,192.168.0.0/16,DIRECT
+          - IP-CIDR,10.0.0.0/8,DIRECT
+          - GEOIP,CN,DIRECT
+          - MATCH,auto
+
+
 

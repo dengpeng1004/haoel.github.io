@@ -128,5 +128,21 @@
           - GEOIP,CN,DIRECT
           - MATCH,auto
 
+iPhone 上的客户端我推荐使用下面这两个（需要付费）,这两个客户端都支持很多协议，如：ShadowSocks, HTTP(s), VMess, Socks5,等。
 
-
+https://apps.apple.com/us/app/shadowrocket/id932747118，又叫小火箭 港区 22hk,可以使用 港区 AlipayHK 绑定国内 维萨信用卡，国内手机号付款，地址随便写，其中使用 HTTPS 的代理，配置上就好了。
+节点类型 HTTP
+地址: amz.AABBCCDD.com （这是第3步，你用的域名）
+端口: 443
+用户名: 你买的VPS 的 用户名
+密码: 你买的VPS 的 密码
+算法： auto 
+插件:  gost
+   地址 amz.AABBCCDD.com （这是第3步，你用的域名）
+   端口：443
+   类型：tls
+   允许不安全
+右上角  保存
+ 连通性测试 TCP
+   URL测试设置：
+    测试URL：https://www.google.com
